@@ -1,0 +1,123 @@
+from scipy.stats import chi2_contingency
+from statsmodels.stats.proportion import proportions_ztest
+from statsmodels.stats.multitest import multipletests
+
+
+full_dataframe["calltime"] = pd.to_datetime(full_dataframe["calltime"])
+before_start = "2023-08-01"
+before_end = "2024-03-31"  
+
+after_start = "2024-08-01"
+after_end = "2025-03-31"
+
+before_df = full_dataframe[
+    (full_dataframe["calltime"] >= before_start) & (full_dataframe["calltime"] <= before_end)
+]
+
+after_df = full_dataframe[
+    (full_dataframe["calltime"] >= after_start) & (full_dataframe["calltime"] <= after_end)
+]
+
+cahoots_natures = full_dataframe["nature"].dropna().unique()
+cahoots_natures = [n for n in cahoots_natures if "CAHOOTS" in n]
+
+base_natures = [n.replace(", CAHOOTS", "").strip() for n in cahoots_natures]
+
+all_natures = set(full_dataframe["nature"].dropna().unique())
+shared_natures = [n for n in base_natures if n in all_natures]
+
+def count_cases(nature, df):
+    cahoots_count = df[df["nature"] == f"{nature}, CAHOOTS"]["nature"].count()
+    non_cahoots_count = df[df["nature"] == nature]["nature"].count()
+    total = cahoots_count + non_cahoots_count
+    percent_cahoots = f"{100 * cahoots_count / total:.1f}%" if total > 0 else "0.0%"
+    return cahoots_count, non_cahoots_count, total, percent_cahoots
+
+comparison_data_before = []
+comparison_data_after = []
+chi_squared_results = []
+ztest_pvals = []
+
+for nature in shared_natures:
+    cb, ncb, tb, pb = count_cases(nature, before_df)
+    comparison_data_before.append({
+        "Nature": nature,
+        "CAHOOTS Cases": cb,
+        "Non-CAHOOTS Cases": ncb,
+        "Total Cases": tb,
+        "% CAHOOTS": pb
+    })
+    
+    ca, nca, ta, pa = count_cases(nature, after_df)
+    comparison_data_after.append({
+        "Nature": nature,
+        "CAHOOTS Cases": ca,
+        "Non-CAHOOTS Cases": nca,
+        "Total Cases": ta,
+        "% CAHOOTS": pa
+    })
+    
+    contingency_table = [[cb, ncb], [ca, nca]]
+    try:
+        chi2, p_chi2, dof, expected = chi2_contingency(contingency_table)
+    except ValueError:
+        chi2, p_chi2 = float('nan'), float('nan')
+    
+    count = [cb, ca]
+    nobs = [cb + ncb, ca + nca]
+    try:
+        zstat, p_z = proportions_ztest(count, nobs)
+    except:
+        p_z = float('nan')
+    ztest_pvals.append(p_z)
+    
+    chi_squared_results.append({
+        "Nature": nature,
+        "Chi2": round(chi2, 4),
+        "p-value": round(p_chi2, 4),
+        "Z-test p-value": round(p_z, 4),
+        "Significant (Chi2)": "Significant" if p_chi2 < 0.05 else "Not Significant"
+    })
+
+_, corrected_pvals, _, _ = multipletests(ztest_pvals, method='bonferroni')
+
+for i, p_corr in enumerate(corrected_pvals):
+    chi_squared_results[i]["Z-test Bonferroni"] = round(p_corr, 4)
+    chi_squared_results[i]["Significant (Z)"] = "Significant" if p_corr < 0.05 else "Not Significant"
+
+comparison_df_before = pd.DataFrame(comparison_data_before).sort_values("Total Cases", ascending=False)
+comparison_df_after = pd.DataFrame(comparison_data_after).sort_values("Total Cases", ascending=False)
+chi_squared_df = pd.DataFrame(chi_squared_results)
+
+merged = pd.merge(
+    comparison_df_before[["Nature", "CAHOOTS Cases"]],
+    comparison_df_after[["Nature", "CAHOOTS Cases"]],
+    on="Nature",
+    suffixes=("_Before", "_After")
+)
+
+def safe_percent_increase(before, after):
+    if before == 0:
+        return float('inf') if after > 0 else 0
+    return (after - before) / before * 100
+
+merged["% Increase in CAHOOTS Cases"] = merged.apply(
+    lambda row: safe_percent_increase(row["CAHOOTS Cases_Before"], row["CAHOOTS Cases_After"]),
+    axis=1
+)
+
+merged_sorted = merged.sort_values("% Increase in CAHOOTS Cases", ascending=False)
+
+final_results = pd.merge(merged_sorted, chi_squared_df, on="Nature")
+
+print("\nComparison BEFORE (Aug 2023–Mar 2024):")
+print(comparison_df_before)
+
+print("\nComparison AFTER (Aug 2024–Mar 2025):")
+print(comparison_df_after)
+
+print("\nPercentage Increase in CAHOOTS Cases (After vs. Before):")
+print(merged_sorted)
+
+print("\nChi-squared and Z-test Results per Nature Type:")
+print(final_results.sort_values("p-value"))
