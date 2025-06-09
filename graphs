@@ -1,0 +1,212 @@
+#chi_squared_graphs
+
+natures = merged_sorted["Nature"]
+percent_change = merged_sorted["% Increase in CAHOOTS Cases"]
+p_values = final_results["p-value"]
+bar_colors = ['#2ca02c' if x >= 0 else '#d62728' for x in percent_change]
+edge_colors = ['black' if p < 0.05 else 'none' for p in p_values]
+
+significance = ['★' if p < 0.05 else '' for p in p_values]
+
+
+sort_idx = np.argsort(percent_change)[::-1]
+natures_sorted = natures.iloc[sort_idx].values
+change_sorted = percent_change.iloc[sort_idx].values
+sig_sorted = np.array(significance)[sort_idx]
+bar_colors_sorted = np.array(bar_colors)[sort_idx]
+edge_colors_sorted = np.array(edge_colors)[sort_idx]
+
+
+plt.figure(figsize=(12, 8))
+bars = plt.barh(
+    natures_sorted,
+    change_sorted,
+    color=bar_colors_sorted,
+    edgecolor=edge_colors_sorted,
+    linewidth=2
+)
+for i, (change, sig) in enumerate(zip(change_sorted, sig_sorted)):
+    if sig:
+        plt.text(change, i, ' ' + sig,
+                 va='center', ha='left' if change >= 0 else 'right',
+                 color='gold', fontsize=14, weight='bold')
+    plt.text(change/2 if change >= 0 else change*1.1, i,
+             f'{change:.1f}%',
+             va='center', ha='center',
+             color='white' if abs(change) > 20 else 'black')
+
+plt.axvline(0, color='black', linewidth=0.8)
+plt.xlabel('% Change in CAHOOTS Cases (After vs Before)')
+plt.title('Change in CAHOOTS Case Volume After MCLSC Rollout')
+
+legend_elements = [
+    Patch(facecolor='#2ca02c', edgecolor='none', label='Increase (not significant)'),
+    Patch(facecolor='#d62728', edgecolor='none', label='Decrease (not significant)'),
+    Patch(facecolor='#2ca02c', edgecolor='black', linewidth=2, label='Increase (significant)'),
+    Patch(facecolor='#d62728', edgecolor='black', linewidth=2, label='Decrease (significant)')
+]
+plt.legend(handles=legend_elements, title='Change & Chi-Squared Significance', loc='upper right')
+
+plt.tight_layout()
+plt.show()
+
+
+#chi_squared with percent change
+
+plot_df = final_results.sort_values("% Increase in CAHOOTS Cases", ascending=False).copy()
+plot_df["Significance_Category"] = plot_df["p-value"].apply(
+    lambda p: "Significant" if p < 0.05 else "Not Significant"
+)
+
+plot_df["Significance_Label"] = plot_df.apply(
+    lambda row: f"p={row['p-value']:.3f} ({'Significant' if row['p-value'] < 0.05 else 'Not Significant'})", 
+    axis=1
+)
+
+plot_df = plot_df[plot_df["% Increase in CAHOOTS Cases"] != float('inf')]
+
+# Create the plot
+plt.figure(figsize=(14, 10))
+ax = sns.barplot(
+    data=plot_df,
+    x="% Increase in CAHOOTS Cases",
+    y="Nature",
+    hue="Significance_Category", 
+    palette={"Significant": "#4CAF50", 
+             "Not Significant": "#B0BEC5"},  
+    dodge=False
+)
+
+for i, (_, row) in enumerate(plot_df.iterrows()):
+    x_pos = row["% Increase in CAHOOTS Cases"] + 1 if row["% Increase in CAHOOTS Cases"] >= 0 else row["% Increase in CAHOOTS Cases"] - 5
+    ha = 'left' if row["% Increase in CAHOOTS Cases"] >= 0 else 'right'
+    
+    case_text = f"{row['CAHOOTS Cases_After']}/{row['CAHOOTS Cases_Before']}"
+    plt.text(x_pos, i, 
+             f"{case_text}\nΔ={row['% Increase in CAHOOTS Cases']:.0f}%\n{row['Significance_Label']}", 
+             va='center', fontsize=8, ha=ha)
+
+plt.title("Percentage Change in CAHOOTS Cases by Nature Type\nBefore (Aug 2023-Mar 2024) vs After (Aug 2024-Mar 2025) Implementation", 
+          pad=20, fontsize=12)
+plt.xlabel("% Increase in CAHOOTS Cases (After vs Before)", fontsize=10)
+plt.ylabel("Nature Type", fontsize=10)
+plt.axvline(0, color="gray", linestyle="--", alpha=0.7)
+
+
+handles, labels = ax.get_legend_handles_labels()
+labels = ["Significant (p < 0.05)", "Not Significant (p ≥ 0.05)"]
+plt.legend(handles, labels, title="Statistical Significance", 
+           bbox_to_anchor=(1.05, 1), loc='upper left')
+
+plt.grid(axis='x', alpha=0.3)
+plt.tight_layout()
+
+
+plt.show()
+
+
+#bar graph
+import matplotlib.pyplot as plt
+import numpy as np
+
+
+natures = final_results['Nature']
+before_cases = final_results['CAHOOTS Cases_Before']
+after_cases = final_results['CAHOOTS Cases_After']
+p_values = final_results['p-value']
+percent_increase = final_results['% Increase in CAHOOTS Cases']
+
+sort_idx = np.argsort(before_cases)[::-1]
+natures = natures.iloc[sort_idx]
+before_cases = before_cases.iloc[sort_idx]
+after_cases = after_cases.iloc[sort_idx]
+p_values = p_values.iloc[sort_idx]
+percent_increase = percent_increase.iloc[sort_idx]
+
+plt.figure(figsize=(14, 10))
+
+x = np.arange(len(natures))
+width = 0.35
+
+bars_before = plt.bar(x - width/2, before_cases, width, label='Before (Aug 2023-Mar 2024)', color='#1f77b4')
+bars_after = plt.bar(x + width/2, after_cases, width, label='After (Aug 2024-Mar 2025)', color='#ff7f0e')
+
+for i, (before, after, p) in enumerate(zip(before_cases, after_cases, p_values)):
+    if p < 0.05:
+        plt.text(x[i], max(before, after) + 5, '*', ha='center', fontsize=14, color='red')
+    plt.text(x[i], -max(before_cases)*0.05, f'{percent_increase.iloc[i]:.0f}%', 
+             ha='center', va='top', rotation=90, fontsize=9)
+
+plt.ylabel('Number of CAHOOTS Cases', fontsize=12)
+plt.title('Change in CAHOOTS Cases by Call Nature (Before vs After MCLSC Implementation)', fontsize=14, pad=20)
+plt.xticks(x, natures, rotation=45, ha='right', fontsize=10)
+plt.legend(fontsize=10)
+
+plt.grid(axis='y', alpha=0.3)
+plt.tight_layout()
+
+
+plt.show()
+
+#z-test scores
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+
+data = {
+    'Nature': [
+        'TRAFFIC HAZARD', 'CHECK WELFARE', 'FOUND SYRINGE', 'TRANSPORT',
+        'SUICIDAL SUBJECT', 'DISORDERLY SUBJECT', 'INTOXICATED SUBJECT', 'DISORIENTED SUBJECT'
+    ],
+    '% Increase in CAHOOTS Cases': [
+        11.374408, -3.161810, 2.105263, -2.614968,
+        -20.335637, -14.107884, 15.596330, -34.532374
+    ],
+    'Z-test p-value': [
+        0.0505, 0.0681, 0.0537, 0.0793,
+        0.0961, 0.3039, 0.9440, 0.9928
+    ]
+}
+
+df = pd.DataFrame(data)
+
+df['Significance'] = df['Z-test p-value'].apply(
+    lambda p: 'Significant (p < 0.05)' if p < 0.05 else 'Not Significant'
+)
+
+# Plot
+plt.figure(figsize=(10, 6))
+sns.set(style="whitegrid")
+
+palette = {
+    'Significant (p < 0.05)': 'green',
+    'Not Significant': 'gray'
+}
+
+scatter = sns.scatterplot(
+    data=df,
+    x='% Increase in CAHOOTS Cases',
+    y='Z-test p-value',
+    hue='Significance',
+    palette=palette,
+    s=100
+)
+
+for i, row in df.iterrows():
+    plt.text(
+        row['% Increase in CAHOOTS Cases'] + 0.5,
+        row['Z-test p-value'] + 0.005,
+        row['Nature'],
+        fontsize=9
+    )
+
+plt.axhline(y=0.05, color='red', linestyle='--', label='p = 0.05')
+
+plt.title('Z-test p-values vs. Change in CAHOOTS-Involved Cases', fontsize=14)
+plt.xlabel('% Change in CAHOOTS Cases (After vs. Before)', fontsize=12)
+plt.ylabel('Z-test p-value', fontsize=12)
+plt.legend(title='Statistical Significance', loc='lower left')
+
+plt.tight_layout()
+plt.show()
