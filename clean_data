@@ -1,0 +1,21 @@
+#data cleaning
+
+file_paths = [
+    "/Users/mayarios/Desktop/Spring 25/class_data_2023.csv",
+    "/Users/mayarios/Desktop/Spring 25/class_data_2024.csv",
+    "/Users/mayarios/Desktop/Spring 25/class_data_2025.csv"
+]
+
+dataframes = [pd.read_csv(path, dtype=str) for path in file_paths]
+full_dataframe = pd.concat(dataframes, ignore_index=True)
+full_dataframe.columns = full_dataframe.columns.str.strip().str.lower()
+
+
+unique_natures = pd.Series(full_dataframe["nature"].dropna().unique())
+cahoots_natures = unique_natures[unique_natures.str.contains("CAHOOTS", case=False)]
+base_natures = cahoots_natures.str.replace(r",\s*CAHOOTS", "", regex=True)
+matching_base = base_natures[base_natures.isin(unique_natures)]
+filter_list = pd.concat([matching_base, 
+                         matching_base + ", CAHOOTS"]).tolist()
+filtered_df = full_dataframe[full_dataframe["nature"].isin(filter_list)]
+filtered_df.columns
